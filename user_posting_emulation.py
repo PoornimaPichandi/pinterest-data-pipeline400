@@ -82,7 +82,8 @@ def run_infinite_post_data_loop():
                             "is_image_or_video": pin_result["is_image_or_video"],
                             "image_src": pin_result["image_src"],
                             "downloaded": pin_result["downloaded"],
-                            "save_location": pin_result["save_location"]
+                            "save_location": pin_result["save_location"],
+                            "category": pin_result["category"]                            
                         }}
                     ]
                 }, default=datetime_handler)
