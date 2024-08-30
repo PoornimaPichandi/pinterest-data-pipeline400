@@ -13,9 +13,26 @@ from datetime import datetime
 random.seed(100)
 
 class AWSDBConnector:
+    """
+    A class used to connect to an AWS RDS MySQL database using credentials from a YAML file.
+
+    Attributes:
+        filepath (str): Default file path for the credentials YAML file.
+        creds (dict): Dictionary to store credentials after loading from the YAML file.
+
+    Methods:
+        __init__(filepath=None): Initializes the AWSDBConnector with the given or default file path.
+        create_db_connector(): Creates and returns a SQLAlchemy engine using the credentials.
+    """
     filepath = 'C:/Users/poorn/Documents/Python Scripts/git_repo/pinterest-data-pipeline400/db_creds.yaml'
 
     def __init__(self, filepath=None):
+        """
+        Initializes the AWSDBConnector with the given or default file path.
+
+        Parameters:
+            filepath (str, optional): The path to the credentials YAML file. Defaults to the class-level filepath.
+        """
         if filepath is None:
             filepath = AWSDBConnector.filepath
         
@@ -30,6 +47,15 @@ class AWSDBConnector:
             self.creds = None 
         
     def create_db_connector(self):
+        """
+        Creates a SQLAlchemy engine using the credentials loaded from the YAML file.
+
+        Returns:
+            sqlalchemy.engine.Engine: A SQLAlchemy engine connected to the MySQL database.
+
+        Raises:
+            ValueError: If credentials are not available.
+        """
         print(f"Current state of self.creds: {self.creds}")
         if self.creds:
             engine = sqlalchemy.create_engine(f"mysql+pymysql://{self.creds['RDS_USER']}:{self.creds['RDS_PASSWORD']}@{self.creds['RDS_HOST']}:{self.creds['RDS_PORT']}/{self.creds['RDS_DATABASE']}?charset=utf8mb4")
@@ -41,6 +67,14 @@ class AWSDBConnector:
 new_connector = AWSDBConnector()
 
 def send_data_to_kafka(invoke_url, payload):
+    """
+    Sends data to a Kafka topic via an HTTP POST request.
+
+    Parameters:
+        invoke_url (str): The URL of the Kafka REST Proxy.
+        payload (str): The JSON payload to be sent.
+
+    """
     headers = {'Content-Type':'application/vnd.kafka.json.v2+json'}
     response = requests.post(invoke_url, headers=headers, data=payload)
     if response.status_code == 200:
@@ -54,6 +88,13 @@ def datetime_handler(x):
     raise TypeError("Type not serializable")
 
 def run_infinite_post_data_loop():
+    """
+    Continuously fetches random rows from the database and sends them to Kafka topics.
+
+    This function runs an infinite loop where it fetches a random row from Pinterest, 
+    geolocation, and user data tables, and then sends each row's data to the corresponding 
+    Kafka topic.
+    """
     while True:
         sleep(random.randrange(0, 2))
         random_row = random.randint(0, 11000)

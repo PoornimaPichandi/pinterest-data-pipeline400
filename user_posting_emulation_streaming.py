@@ -1,8 +1,6 @@
 import requests
 from time import sleep
 import random
-from multiprocessing import Process
-import boto3
 import json
 import sqlalchemy
 import os
@@ -12,8 +10,18 @@ from datetime import datetime
 
 random.seed(100)
 
-
 class AWSDBConnector:
+    """
+    A class used to connect to an AWS RDS MySQL database using credentials from a YAML file.
+
+    Attributes:
+        filepath (str): Default file path for the credentials YAML file.
+        creds (dict): Dictionary to store credentials after loading from the YAML file.
+
+    Methods:
+        __init__(filepath=None): Initializes the AWSDBConnector with the given or default file path.
+        create_db_connector(): Creates and returns a SQLAlchemy engine using the credentials.
+    """
     filepath = 'C:/Users/poorn/Documents/Python Scripts/git_repo/pinterest-data-pipeline400/db_creds.yaml'
 
     def __init__(self, filepath=None):
@@ -36,29 +44,66 @@ class AWSDBConnector:
 
 new_connector = AWSDBConnector()
 
-def send_data_to_kinesis(stream_url, payload):
-    headers = {'Content-Type':'application/json'}
-    response = requests.put(stream_url, headers=headers, data=payload)
-    if response.status_code == 200:
-        print(f"Sent data to {stream_url} successfully")
-    else:
-        print(f"Failed to send data to {stream_url}: {response.status_code} - {response.text}")
+def send_data_to_kinesis(stream_url, payload, max_retries=3):
+    """
+    Sends data to an AWS Kinesis stream with retry logic.
+
+    Parameters:
+        stream_url (str): The URL of the Kinesis stream.
+        payload (dict): The data payload to be sent.
+        max_retries (int): The maximum number of retries in case of failure. Defaults to 3.
+    """
+    headers = {'Content-Type': 'application/json'}
+    for attempt in range(max_retries):
+        try:
+            response = requests.put(stream_url, headers=headers, data=json.dumps(payload, default=str))
+            if response.status_code == 200:
+                print(f"Sent data to {stream_url} successfully")
+                print(response.json())
+                return
+            else:
+                print(f"Failed to send data to {stream_url}: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException as e:
+            print(f"Request failed: {e}")
+        
+        # Wait before retrying
+        sleep(2 ** attempt)
+    
+    print(f"Failed to send data to {stream_url} after {max_retries} attempts")
 
 def datetime_handler(x):
-    if isinstance(x, datetime):
-        return x.isoformat()
-    raise TypeError("Type not serializable")
+        """
+    Custom JSON serializer for datetime objects.
+
+    Parameters:
+        x (any): The object to serialize.
+
+    Returns:
+        str: ISO format string if x is a datetime object.
+
+    Raises:
+        TypeError: If the object is not serializable.
+    """
+        if isinstance(x, datetime):
+            return x.isoformat()
+        raise TypeError("Type not serializable")
 
 def run_infinite_post_data_loop():
-    kinesis_client = boto3.client('kinesis', region_name='us-east-1')
+    """
+    Continuously fetches random rows from the database and sends them to AWS Kinesis streams.
+    
+    This function runs an infinite loop where it fetches a random row from Pinterest, 
+    geolocation, and user data tables, and then sends each row's data to the corresponding 
+    Kinesis stream.
+    """
     pin_stream_url = "https://g8dvnn0wp2.execute-api.us-east-1.amazonaws.com/prod/streams/streaming-0afff54d5643-pin/record"
     geo_stream_url = "https://g8dvnn0wp2.execute-api.us-east-1.amazonaws.com/prod/streams/streaming-0afff54d5643-geo/record"
     user_stream_url = "https://g8dvnn0wp2.execute-api.us-east-1.amazonaws.com/prod/streams/streaming-0afff54d5643-user/record"
    
-
     while True:
+        # Sleep for a random interval between 0 and 2 seconds
         sleep(random.randrange(0, 2))
-        random_row = random.randint(0, 11000)
+        random_row = random.randint(0, 11000) # Random row number to fetch from the database
         engine = new_connector.create_db_connector()
 
         with engine.connect() as connection:
@@ -68,7 +113,9 @@ def run_infinite_post_data_loop():
             pin_selected_row = connection.execute(pin_string)
             for row in pin_selected_row:
                 pin_stream_result = dict(row._mapping)
-                pin_payload = {                    
+                pin_payload = {    
+                    "StreamName": "streaming-0afff54d5643-pin",
+                    "Data": {              
                     "index": pin_stream_result["index"],
                     "unique_id": pin_stream_result["unique_id"],
                     "title": pin_stream_result["title"],
@@ -81,6 +128,8 @@ def run_infinite_post_data_loop():
                     "downloaded": pin_stream_result["downloaded"],
                     "save_location": pin_stream_result["save_location"],
                     "category": pin_stream_result["category"]
+                },
+                "PartitionKey": "1"
                 }
                 send_data_to_kinesis(pin_stream_url, pin_payload)
 
@@ -90,12 +139,15 @@ def run_infinite_post_data_loop():
             for row in geo_selected_row:
                 geo_stream_result = dict(row._mapping)
                 geo_payload = {
-                    
+                    "StreamName": "streaming-0afff54d5643-geo",
+                    "Data":{
                     "ind": geo_stream_result["ind"],
                     "timestamp": geo_stream_result["timestamp"],
                     "latitude": geo_stream_result["latitude"],
                     "longitude": geo_stream_result["longitude"],
                     "country": geo_stream_result["country"]
+                },
+                "PartitionKey": "1"
                 }
                 send_data_to_kinesis(geo_stream_url, geo_payload)
 
@@ -105,12 +157,15 @@ def run_infinite_post_data_loop():
             for row in user_selected_row:
                 user_stream_result = dict(row._mapping)
                 user_payload = {
-                    
+                    "StreamName": "streaming-0afff54d5643-user",
+                    "Data":{
                     "ind": user_stream_result["ind"],
                     "first_name": user_stream_result["first_name"],
                     "last_name": user_stream_result["last_name"],
                     "age": user_stream_result["age"],
                     "date_joined": user_stream_result["date_joined"]
+                },
+                "PartitionKey": "1"
                 }
                 send_data_to_kinesis(user_stream_url, user_payload)
                 
@@ -121,6 +176,3 @@ def run_infinite_post_data_loop():
 if __name__ == "__main__":
     run_infinite_post_data_loop()
     print('Working')
-    
-
-
