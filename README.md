@@ -20,19 +20,13 @@
 
 
 # Project Aim:
-    In this project, I am developing an infrastructure 
-    
-    similar to Pinterest, which integrates both historical 
+    In this project, I am developing an infrastructure similar to Pinterest, which integrates both historical 
     
     and real-time data, such as user posts.
     
-    The infrastructure is built in the AWS cloud and 
+    The infrastructure is built in the AWS cloud and processes data events through two distinct pipelines one for real-time data and 
     
-    processes data events through two distinct pipelines: 
-    
-    one for real-time data and the other for historical 
-    
-    data.
+    the other for historical data.
    
 # Software Requirements:
    - VSCode
